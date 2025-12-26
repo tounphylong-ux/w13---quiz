@@ -11,14 +11,15 @@ class GroceryList extends StatefulWidget {
 }
 
 class _GroceryListState extends State<GroceryList> {
-  int _currenTabIndex = 0; // by default
+  int _currentTabIndex = 0;
 
+  // CREATE new grocery
   void onCreate() async {
-    // Navigate to the form screen using the Navigator push
     Grocery? newGrocery = await Navigator.push<Grocery>(
       context,
       MaterialPageRoute(builder: (context) => const GroceryForm()),
     );
+
     if (newGrocery != null) {
       setState(() {
         dummyGroceryItems.add(newGrocery);
@@ -26,20 +27,11 @@ class _GroceryListState extends State<GroceryList> {
     }
   }
 
-  void onEdit(Grocery grocery) async {
-    final Grocery? updatedGrocery = await Navigator.push<Grocery>(
-      context,
-      MaterialPageRoute(builder: (context) => GroceryForm(grocery: grocery)),
-    );
-    if (updatedGrocery != null) {
-      setState(() {
-        final index =
-            dummyGroceryItems.indexWhere((element) => element.id == updatedGrocery.id);
-        if (index != -1) {
-          dummyGroceryItems[index] = updatedGrocery;
-        }
-      });
-    }
+  // DELETE grocery (used ONLY in Search tab)
+  void onDelete(Grocery grocery) {
+    setState(() {
+      dummyGroceryItems.removeWhere((item) => item.id == grocery.id);
+    });
   }
 
   @override
@@ -49,21 +41,19 @@ class _GroceryListState extends State<GroceryList> {
         title: const Text('Your Groceries'),
         actions: [IconButton(onPressed: onCreate, icon: const Icon(Icons.add))],
       ),
-
       body: IndexedStack(
-        index: _currenTabIndex,
+        index: _currentTabIndex,
         children: [
-          GroceriesTab(onEdit: onEdit),
-          SeearchTab(onEdit: onEdit),
+          const GroceriesTab(),
+          SearchTab(onDelete: onDelete),
         ],
       ),
-
       bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _currentTabIndex,
         selectedItemColor: Theme.of(context).colorScheme.primary,
-        currentIndex: _currenTabIndex,
         onTap: (index) {
           setState(() {
-            _currenTabIndex = index;
+            _currentTabIndex = index;
           });
         },
         items: const [
@@ -71,56 +61,70 @@ class _GroceryListState extends State<GroceryList> {
             icon: Icon(Icons.local_grocery_store),
             label: 'Groceries',
           ),
-          BottomNavigationBarItem(icon: Icon(Icons.search), label: 'Groceries'),
+          BottomNavigationBarItem(icon: Icon(Icons.search), label: 'Search'),
         ],
       ),
     );
   }
 }
 
-class SeearchTab extends StatefulWidget {
-  const SeearchTab({super.key, required this.onEdit});
+class SearchTab extends StatefulWidget {
+  const SearchTab({super.key, required this.onDelete});
 
-  final void Function(Grocery grocery) onEdit;
+  final void Function(Grocery grocery) onDelete;
 
   @override
-  State<SeearchTab> createState() => _SeearchTabState();
+  State<SearchTab> createState() => _SearchTabState();
 }
 
-class _SeearchTabState extends State<SeearchTab> {
-  String searchText = "";
-
-  void onSearchChanged(String value) {
-    setState(() {
-      searchText = value;
-    });
-  }
+class _SearchTabState extends State<SearchTab> {
+  String searchText = '';
 
   List<Grocery> get filteredList {
-    List<Grocery> result = [];
-    for(Grocery g in dummyGroceryItems) {
-      if (g.name.startsWith(searchText)) {
-        result.add(g);
-      }
-    }
-    return result;
+    final query = searchText.trim().toLowerCase();
+    if (query.isEmpty) return List<Grocery>.from(dummyGroceryItems);
+
+    return dummyGroceryItems
+        .where((g) => g.name.toLowerCase().contains(query))
+        .toList();
   }
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.all(15.0),
+      padding: const EdgeInsets.all(15),
       child: Column(
         children: [
-          TextField(onChanged: onSearchChanged),
-          SizedBox(height: 15),
+          TextField(
+            decoration: const InputDecoration(
+              hintText: 'Search grocery...',
+              prefixIcon: Icon(Icons.search),
+            ),
+            onChanged: (value) {
+              setState(() {
+                searchText = value;
+              });
+            },
+          ),
+          const SizedBox(height: 15),
           Expanded(
             child: ListView.builder(
               itemCount: filteredList.length,
-              itemBuilder: (context, index) => GroceryTile(
-                grocery: filteredList[index],
-                onTap: () => widget.onEdit(filteredList[index]),
-              ),
+              itemBuilder: (context, index) {
+                final grocery = filteredList[index];
+                return Dismissible(
+                  key: ValueKey(grocery.id),
+                  direction: DismissDirection.endToStart,
+                  background: Container(
+                    color: Colors.red,
+                    alignment: Alignment.centerRight,
+                    padding: const EdgeInsets.only(right: 20),
+                    child: const Icon(Icons.delete, color: Colors.white),
+                  ),
+                  onDismissed: (_) => widget.onDelete(grocery),
+                  child: GroceryTile(grocery: grocery),
+                );
+              },
             ),
           ),
         ],
@@ -130,34 +134,28 @@ class _SeearchTabState extends State<SeearchTab> {
 }
 
 class GroceriesTab extends StatelessWidget {
-  const GroceriesTab({super.key, required this.onEdit});
-
-  final void Function(Grocery grocery) onEdit;
+  const GroceriesTab({super.key});
 
   @override
   Widget build(BuildContext context) {
-    Widget content = const Center(child: Text('No items added yet.'));
-
-    if (dummyGroceryItems.isNotEmpty) {
-      //  Display groceries with an Item builder and  LIst Tile
-      content = ListView.builder(
-        itemCount: dummyGroceryItems.length,
-        itemBuilder: (context, index) =>
-            GroceryTile(
-          grocery: dummyGroceryItems[index],
-          onTap: () => onEdit(dummyGroceryItems[index]),
-        ),
-      );
+    if (dummyGroceryItems.isEmpty) {
+      return const Center(child: Text('No items added yet.'));
     }
-    return content;
+
+    return ListView.builder(
+      itemCount: dummyGroceryItems.length,
+      itemBuilder: (context, index) {
+        final grocery = dummyGroceryItems[index];
+        return GroceryTile(grocery: grocery);
+      },
+    );
   }
 }
 
 class GroceryTile extends StatelessWidget {
-  const GroceryTile({super.key, required this.grocery, this.onTap});
+  const GroceryTile({super.key, required this.grocery});
 
   final Grocery grocery;
-  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -165,7 +163,6 @@ class GroceryTile extends StatelessWidget {
       leading: Container(width: 15, height: 15, color: grocery.category.color),
       title: Text(grocery.name),
       trailing: Text(grocery.quantity.toString()),
-      onTap: onTap,
     );
   }
 }
